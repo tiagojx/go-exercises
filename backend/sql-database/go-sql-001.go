@@ -11,12 +11,12 @@ import (
 	_ "github.com/lib/pq"
 )
 
+var db *sql.DB
+
 type User struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
-
-var db *sql.DB
 
 func userRegistration(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -38,7 +38,7 @@ func userRegistration(w http.ResponseWriter, r *http.Request) {
 	id := 0
 	err := db.QueryRow(sqlInsert, u.Name, u.Email).Scan(&id)
 	if err != nil {
-		http.Error(w, "Error on saving database "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error saving database "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -46,7 +46,7 @@ func userRegistration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func main() {
+func setupDatabase() {
 	var err error
 
 	// Busca pela senha na variável de ambiente.
@@ -65,8 +65,6 @@ func main() {
 	}
 	fmt.Println("Successfully connected to PostgreSQL database!")
 
-	defer db.Close()
-
 	// Certifica que a tabela 'users' existe.
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
@@ -79,12 +77,21 @@ func main() {
 		log.Fatal("Error creating table in database.")
 	}
 	fmt.Println("Table 'users': ok!")
+}
 
-	// HTTP Server
+func setupServer() {
 	http.HandleFunc("/register", userRegistration)
 
 	fmt.Println("Running on http://localhost:8080/...")
-	if err = http.ListenAndServe(":8080", nil); err != nil {
-		fmt.Println("Error starting server", err)
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatal("Error starting server", err)
 	}
+}
+
+func main() {
+	setupDatabase()
+	defer db.Close()
+
+	// HTTP Server
+	setupServer()
 }

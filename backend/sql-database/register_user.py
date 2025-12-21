@@ -20,4 +20,4 @@ try:
 except Exception as e:
     logging.error(e)
 else:
-    print("Created new user in database with curl!")
+    print("Created new user in database!")
