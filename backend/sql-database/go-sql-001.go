@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,10 @@ type User struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type Index struct {
+	Users []User
 }
 
 func selectUsersQuery() ([]User, error) {
@@ -62,8 +67,21 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	/* Begin: Front-end test */
+	tmpl, err := template.ParseFiles("index.html")
+	if err != nil {
+		http.Error(w, "Error parsing HTML: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var index Index
+	index.Users = users
+	w.Header().Set("Content-Type", "text/html")
+	tmpl.Execute(w, index)
+	/* End: Front-end test */
+
+	//w.Header().Set("Content-Type", "application/json")
+	//json.NewEncoder(w).Encode(users)
 }
 
 func userRegistration(w http.ResponseWriter, r *http.Request) {
