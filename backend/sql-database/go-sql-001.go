@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,8 +15,55 @@ import (
 var db *sql.DB
 
 type User struct {
+	ID    int    `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+func selectUsersQuery() ([]User, error) {
+	users := []User{}
+	noUsers := errors.New("No users to select.")
+
+	rows, err := db.Query("SELECT id, name, email FROM users")
+	if err != nil {
+		fmt.Println("Error querying users: "+err.Error(), http.StatusInternalServerError)
+
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var u User
+
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+			fmt.Println("Error scanning row: "+err.Error(), http.StatusInternalServerError)
+			return nil, noUsers
+		}
+
+		users = append(users, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		fmt.Println("Error iterating: "+err.Error(), http.StatusInternalServerError)
+		return nil, noUsers
+	}
+
+	return users, nil
+}
+
+func getUsersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not alowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	users, err := selectUsersQuery()
+	if err != nil {
+		http.Error(w, "Error getting users: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
 }
 
 func userRegistration(w http.ResponseWriter, r *http.Request) {
@@ -25,24 +73,41 @@ func userRegistration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var u User
+
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	sqlInsert := `
-		INSERT INTO users (name, email)
-		VALUES ($1, $2)
-		RETURNING id`
-
-	id := 0
-	err := db.QueryRow(sqlInsert, u.Name, u.Email).Scan(&id)
+	users, err := selectUsersQuery()
 	if err != nil {
-		http.Error(w, "Error saving database "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error getting users: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Printf("Created new user with ID: %d\n", id)
+	var last_id int
+	new_id := 0
+	for i := range users {
+		for j := 0; j < i; j++ {
+			last_id = users[i].ID
+
+			if last_id >= new_id {
+				new_id = last_id + 1
+			}
+		}
+	}
+
+	sqlInsert := `
+		INSERT INTO users (id, name, email)
+		VALUES ($1, $2, $3)`
+
+	row := db.QueryRow(sqlInsert, new_id, u.Name, u.Email)
+	if row.Err() != nil {
+		http.Error(w, "Error saving database: "+row.Err().Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Created new user with ID: %d\n", new_id)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -80,6 +145,7 @@ func setupDatabase() {
 }
 
 func setupServer() {
+	http.HandleFunc("/", getUsersHandler)
 	http.HandleFunc("/register", userRegistration)
 
 	fmt.Println("Running on http://localhost:8080/...")
