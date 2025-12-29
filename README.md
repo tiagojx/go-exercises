@@ -19,6 +19,6 @@
     - [ ] Login, Register and Forgot Password.
     - [ ] Admin user.
   - Next steps.
-    - [ ] Learn Kubernets.
+    - [ ] Learn Kubernetes.
     - [ ] Create a Git submodule for this project (individual repo).
     - [ ] Implement this MVP in a sample project.
