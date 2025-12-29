@@ -56,12 +56,11 @@ func selectUsersQuery() ([]User, error) {
 	return users, nil
 }
 
-func indexPage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
 
+func indexPage(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	/* Frontend */
@@ -77,12 +76,7 @@ func indexPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getUsersHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not alowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func getAllUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := selectUsersQuery()
 	if err != nil {
 		http.Error(w, "Error getting users: "+err.Error(), http.StatusInternalServerError)
@@ -106,12 +100,7 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getUserById(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusInternalServerError)
-		return
-	}
-
+func getUserId(w http.ResponseWriter, r *http.Request) {
 	var uTable UsersTable
 
 	users, err := selectUsersQuery()
@@ -149,12 +138,36 @@ func getUserById(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func userRegistration(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func deleteUserId(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var id = 0
+
+	idStr := r.PathValue("id")
+	if idStr != "" {
+		id, err = strconv.Atoi(idStr)
+		if err != nil {
+			http.Error(w, "Invalid ID: must be a number : "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	res, err := db.Exec("DELETE FROM users WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, "Erro ao deletar: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	fmt.Printf("User %d was deleted\n", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func userRegistration(w http.ResponseWriter, r *http.Request) {
 	var u User
 
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
@@ -231,9 +244,11 @@ func setupServer() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /", indexPage)
-	mux.HandleFunc("GET /users/", getUsersHandler)
-	mux.HandleFunc("GET /users/{id}/", getUserById)
+	mux.HandleFunc("GET /users/", getAllUsers)
+	mux.HandleFunc("GET /users/{id}/", getUserId)
+	mux.HandleFunc("DELETE /users/{id}/", deleteUserId)
 	mux.HandleFunc("POST /users/register/", userRegistration)
+	mux.HandleFunc("GET /users/register/", methodNotAllowed)
 
 	fmt.Println("Running on http://localhost:8080/...")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
