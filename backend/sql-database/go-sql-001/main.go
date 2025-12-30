@@ -146,14 +146,14 @@ func deleteUserId(w http.ResponseWriter, r *http.Request) {
 	if idStr != "" {
 		id, err = strconv.Atoi(idStr)
 		if err != nil {
-			http.Error(w, "Invalid ID: must be a number : "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "Invalid ID: must be a number: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
 
 	res, err := db.Exec("DELETE FROM users WHERE id = $1", id)
 	if err != nil {
-		http.Error(w, "Erro ao deletar: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error deleting: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -163,8 +163,71 @@ func deleteUserId(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("User %d was deleted\n", id)
+	fmt.Printf("User %d was deleted.\n", id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func updateUserId(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var id = 0
+	var u User
+
+	idStr := r.PathValue("id")
+	if idStr != "" {
+		id, err = strconv.Atoi(idStr)
+		if err != nil {
+			http.Error(w, "Invalid ID: must be a number: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err = json.NewDecoder(r.Body).Decode(&u); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println(u.Name + " " + u.Email)
+	if u.Name == "" || u.Email == "" {
+		var users []User
+		var currentUser User
+
+		users, err = selectUsersQuery()
+		if err != nil {
+			http.Error(w, "Error getting users: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for i := range users {
+			if users[i].ID == id {
+				currentUser = users[i]
+			}
+		}
+
+		if u.Name == "" {
+			u.Name = currentUser.Name
+		} else if u.Email == "" {
+			u.Email = currentUser.Email
+		}
+	}
+
+	putUpdateLine := `
+		UPDATE users
+		SET name = $1, email = $2
+		WHERE id = $3`
+
+	res, err := db.Exec(putUpdateLine, u.Name, u.Email, id)
+	if err != nil {
+		http.Error(w, "Error updating: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	fmt.Printf("User %d was updated.\n", id)
+	w.WriteHeader(http.StatusOK)
 }
 
 func userRegistration(w http.ResponseWriter, r *http.Request) {
@@ -244,11 +307,20 @@ func setupServer() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /", indexPage)
+
+	// GET users
 	mux.HandleFunc("GET /users/", getAllUsers)
 	mux.HandleFunc("GET /users/{id}/", getUserId)
+
+	// DELETE users
 	mux.HandleFunc("DELETE /users/{id}/", deleteUserId)
+
+	// POST users
 	mux.HandleFunc("POST /users/register/", userRegistration)
 	mux.HandleFunc("GET /users/register/", methodNotAllowed)
+
+	// UPDATE users
+	mux.HandleFunc("PATCH /users/{id}/", updateUserId)
 
 	fmt.Println("Running on http://localhost:8080/...")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
